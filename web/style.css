@@ -564,7 +564,10 @@ td.mono { font-family: var(--mono); }
 }
 
 .logs {
-  min-height: 180px;
+  /* A height here acts as the flex basis: it caps the card at a sane size when
+     the card sizes to its content, and still lets the grip stretch it. */
+  height: 300px;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   font-family: var(--mono);

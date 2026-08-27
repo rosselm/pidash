@@ -520,9 +520,13 @@
 
   /* ---------------- log stream ---------------- */
 
-  const logState = { lines: [], paused: false, filter: '', pending: 0 };
-  const LOG_CAP = 400;
+  // BUFFER is what stays searchable; DOM_CAP is what is actually rendered.
+  // Keeping those apart means a filter can reach further back than the visible
+  // list without paying to lay out every row.
+  const BUFFER = 500, DOM_CAP = 300;
+  const logState = { lines: [], paused: false, filter: '', pending: 0, follow: true };
   const logsEl = $('#logs');
+  const jumpBtn = $('#logjump');
 
   function prioClass(p) { return p <= 3 ? 'err' : p === 4 ? 'warn' : ''; }
 
@@ -534,32 +538,64 @@
       `<span class="m">${esc(l.msg)}</span></div>`;
   }
 
+  const matches = (l) =>
+    !logState.filter || (l.msg + ' ' + l.unit).toLowerCase().includes(logState.filter);
+
+  const nearBottom = () => logsEl.scrollHeight - logsEl.scrollTop - logsEl.clientHeight < 24;
+  const toBottom = () => { logsEl.scrollTop = logsEl.scrollHeight; };
+
+  // Appending one row beats re-rendering the list: it keeps the slide-in
+  // animation on genuinely new lines instead of replaying it on all of them,
+  // and it does not throw away the user's scroll position mid-read.
+  function appendLine(l) {
+    if (!matches(l)) return;
+    const placeholder = logsEl.querySelector('.empty');
+    if (placeholder) placeholder.remove();
+    logsEl.insertAdjacentHTML('beforeend', logRow(l));
+    while (logsEl.childElementCount > DOM_CAP) logsEl.firstElementChild.remove();
+    if (logState.follow) toBottom();
+  }
+
+  // Full rebuild, for when the filter changes or a pause is lifted.
   function renderLogs() {
-    const f = logState.filter.toLowerCase();
-    const shown = f
-      ? logState.lines.filter((l) => (l.msg + ' ' + l.unit).toLowerCase().includes(f))
-      : logState.lines;
+    const shown = logState.lines.filter(matches).slice(-DOM_CAP);
     if (!shown.length) {
       logsEl.innerHTML = `<div class="empty">${logState.lines.length ? 'nothing matches that filter' : 'waiting for journal…'}</div>`;
       return;
     }
-    const stick = logsEl.scrollTop + logsEl.clientHeight >= logsEl.scrollHeight - 40;
-    logsEl.innerHTML = shown.slice(-LOG_CAP).map(logRow).join('');
-    if (stick && !logState.paused) logsEl.scrollTop = logsEl.scrollHeight;
+    logsEl.innerHTML = shown.map(logRow).join('');
+    if (logState.follow) toBottom();
   }
 
-  let logFrame = 0;
-  function scheduleLogRender() {
-    if (logFrame) return;
-    logFrame = requestAnimationFrame(() => { logFrame = 0; renderLogs(); });
-  }
+  // Following the tail is the default, and it resumes on its own the moment the
+  // reader scrolls back down — no need to re-arm it by hand.
+  logsEl.addEventListener('scroll', () => {
+    logState.follow = nearBottom();
+    jumpBtn.hidden = logState.follow;
+  });
+  jumpBtn.addEventListener('click', () => {
+    logState.follow = true;
+    jumpBtn.hidden = true;
+    toBottom();
+  });
 
-  $('#logfilter').addEventListener('input', (e) => { logState.filter = e.target.value; renderLogs(); });
+  $('#logfilter').addEventListener('input', (e) => {
+    logState.filter = e.target.value.trim().toLowerCase();
+    logState.follow = true;
+    jumpBtn.hidden = true;
+    renderLogs();
+  });
+
   $('#logpause').addEventListener('click', (e) => {
     logState.paused = !logState.paused;
     e.target.setAttribute('aria-pressed', String(logState.paused));
-    e.target.textContent = logState.paused ? `resume${logState.pending ? ` (${logState.pending})` : ''}` : 'pause';
-    if (!logState.paused) { logState.pending = 0; renderLogs(); }
+    e.target.textContent = logState.paused ? 'resume' : 'pause';
+    if (!logState.paused) {
+      logState.pending = 0;
+      logState.follow = true;
+      jumpBtn.hidden = true;
+      renderLogs();
+    }
   });
 
   /* ---------------- live connection ---------------- */
@@ -632,13 +668,13 @@
 
   connect('/api/logs', 'log', (l) => {
     logState.lines.push(l);
-    if (logState.lines.length > LOG_CAP * 2) logState.lines = logState.lines.slice(-LOG_CAP);
+    if (logState.lines.length > BUFFER) logState.lines = logState.lines.slice(-BUFFER);
     if (logState.paused) {
       logState.pending++;
       $('#logpause').textContent = `resume (${logState.pending})`;
       return;
     }
-    scheduleLogRender();
+    appendLine(l);
   });
 
   /* ---------------- chrome ---------------- */
