@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -29,6 +30,11 @@ import (
 
 //go:embed web
 var webFS embed.FS
+
+// version is stamped at build time with -ldflags "-X main.version=...".
+// A downloaded binary that cannot say what it is turns every bug report into
+// a guessing game.
+var version = "dev"
 
 func main() {
 	var (
@@ -38,8 +44,14 @@ func main() {
 		unitsFlag = flag.String("units", "otelcol-contrib,pi-temp-exporter,docker,ssh", "comma-separated systemd units to watch")
 		logsFlag  = flag.String("log-units", "otelcol-contrib,pi-temp-exporter", "comma-separated units to tail; empty tails the whole journal")
 		sock      = flag.String("docker-sock", "/var/run/docker.sock", "docker socket path, empty to disable")
+		showVer   = flag.Bool("version", false, "print version and exit")
 	)
 	flag.Parse()
+
+	if *showVer {
+		fmt.Printf("pidash %s (%s %s/%s)\n", version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
+		return
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -73,7 +85,7 @@ func main() {
 		_ = srv.Shutdown(sctx)
 	}()
 
-	log.Printf("pidash listening on %s (sampling every %s)", *addr, *interval)
+	log.Printf("pidash %s listening on %s (sampling every %s)", version, *addr, *interval)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("serve: %v", err)
 	}

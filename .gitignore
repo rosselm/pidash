@@ -1,2 +1,3 @@
-# Build output — reproduced by ./install.sh
+# Build output — reproduced by ./install.sh and ./release.sh
 /pidash
+/dist/

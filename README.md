@@ -9,6 +9,22 @@ http://<pi-address>:8090/
 
 `install.sh` prints the exact URL when it finishes.
 
+## Download
+
+Grab a prebuilt binary from [Releases](https://github.com/rosselm/pidash/releases)
+— no Go toolchain needed, and no runtime dependencies, since the frontend is
+embedded in the binary:
+
+```bash
+curl -LO https://github.com/rosselm/pidash/releases/latest/download/pidash-linux-arm64
+chmod +x pidash-linux-arm64
+./pidash-linux-arm64 -addr :8090
+```
+
+`pidash-linux-arm64` covers a Pi 3/4/5 on 64-bit Raspberry Pi OS; `armv7` and
+`armv6` builds cover 32-bit installs and the Zero. To run it as a service
+instead, clone and use [`install.sh`](install.sh) — see [Install](#install).
+
 ## Why it exists separately from the OTel pipeline
 
 The collector on this host pushes to the Mac gateway, so *the moment the network

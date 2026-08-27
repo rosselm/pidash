@@ -8,11 +8,12 @@ cd "$(dirname "$0")"
 GO="${GO:-/usr/local/go/bin/go}"
 PORT="${PORT:-8090}"
 RUN_USER="${RUN_USER:-${SUDO_USER:-$USER}}"
+VERSION="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}"
 
 command -v "$GO" >/dev/null || { echo "go not found at $GO — set GO=/path/to/go" >&2; exit 1; }
 
-echo "==> building"
-"$GO" build -trimpath -ldflags='-s -w' -o pidash .
+echo "==> building ${VERSION}"
+"$GO" build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o pidash .
 
 echo "==> installing /usr/local/bin/pidash"
 sudo install -m 0755 pidash /usr/local/bin/pidash
