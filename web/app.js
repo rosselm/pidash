@@ -598,6 +598,89 @@
     }
   });
 
+
+  /* ---------------- journal drawer ----------------
+
+     Toggled with J or backtick, closed with Escape. Kept out of the grid so it
+     is reachable at any scroll position, and so the logs can be read next to
+     the panel that prompted you to open them. */
+
+  const drawer = $('#drawer');
+  const toggleBtn = $('#journaltoggle');
+  const badge = $('#journalbadge');
+  const DRAWER_KEY = 'pidash.journal.v1';
+  const DRAWER_MIN = 160;
+  let drawerH = 340, unseen = 0;
+
+  const drawerIsOpen = () => drawer.classList.contains('open');
+
+  function setDrawerHeight(px) {
+    drawerH = Math.round(Math.max(DRAWER_MIN, Math.min(window.innerHeight * 0.85, px)));
+    document.documentElement.style.setProperty('--drawer-h', drawerH + 'px');
+  }
+
+  function saveDrawer() {
+    try {
+      localStorage.setItem(DRAWER_KEY, JSON.stringify({ open: drawerIsOpen(), h: drawerH }));
+    } catch { /* private mode */ }
+  }
+
+  function setDrawer(open, persist = true) {
+    drawer.classList.toggle('open', open);
+    drawer.setAttribute('aria-hidden', String(!open));
+    document.body.classList.toggle('drawer-open', open);
+    toggleBtn.setAttribute('aria-pressed', String(open));
+    if (open) {
+      unseen = 0;
+      badge.hidden = true;
+      logState.follow = true;
+      jumpBtn.hidden = true;
+      // After the transform settles, so scrollHeight is the real one.
+      requestAnimationFrame(toBottom);
+    }
+    if (persist) saveDrawer();
+  }
+
+  toggleBtn.addEventListener('click', () => setDrawer(!drawerIsOpen()));
+  $('#logclose').addEventListener('click', () => setDrawer(false));
+
+  $('#drawer-grip').addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    drawer.classList.add('resizing');
+    const startY = e.clientY, startH = drawerH;
+    const move = (ev) => setDrawerHeight(startH + (startY - ev.clientY));
+    const up = () => {
+      drawer.classList.remove('resizing');
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      saveDrawer();
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
+    if (e.key === 'Escape') {
+      if (typing) { e.target.blur(); return; }
+      if (drawerIsOpen()) setDrawer(false);
+      return;
+    }
+    if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'j' || e.key === 'J' || e.key === '`') {
+      e.preventDefault();
+      setDrawer(!drawerIsOpen());
+    }
+  });
+
+  (function restoreDrawer() {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(DRAWER_KEY) || 'null'); } catch { /* ignore */ }
+    setDrawerHeight(saved?.h || drawerH);
+    if (saved?.open) setDrawer(true, false);
+  })();
+
   /* ---------------- live connection ---------------- */
 
   const statusEl = $('#status'), statusText = $('#statustext');
@@ -669,6 +752,14 @@
   connect('/api/logs', 'log', (l) => {
     logState.lines.push(l);
     if (logState.lines.length > BUFFER) logState.lines = logState.lines.slice(-BUFFER);
+    $('#journal-tag').textContent = `${logState.lines.length} lines`;
+    // Count warnings and errors that land while the drawer is shut, so a
+    // failure still announces itself on a dashboard nobody is scrolling.
+    if (!drawerIsOpen() && l.prio <= 4) {
+      unseen++;
+      badge.textContent = unseen > 99 ? '99+' : unseen;
+      badge.hidden = false;
+    }
     if (logState.paused) {
       logState.pending++;
       $('#logpause').textContent = `resume (${logState.pending})`;

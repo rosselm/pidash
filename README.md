@@ -31,13 +31,31 @@ telemetry path does not. It shares no code, no config and no port with
 | Containers | Docker Engine API over `/var/run/docker.sock` |
 | Services | `systemctl show` |
 | Top processes | `/proc/<pid>/{stat,statm,cmdline,status}` |
-| Journal tail | one shared `journalctl -f -o json` |
+| Journal drawer (`J`) | one shared `journalctl -f -o json` |
 
 Throttle flags are reported in both tenses: the low bits of the firmware word are
 "right now", the same bits 16 places up are "since boot". This board currently
 reads `0x50000` — under-voltage and throttling **have occurred**, nothing active.
 That is a power-supply signal worth keeping visible, which is why a past-only
 flag still lights the panel amber.
+
+## The journal drawer
+
+The journal is not a card. It lives in a drawer fixed to the bottom of the
+viewport, because a log panel at the end of a long grid is only reachable by
+scrolling past everything else — and the moment you actually want logs is the
+moment you are staring at a spike somewhere further up the page.
+
+- **`J`** (or backtick) toggles it, **`Esc`** closes it.
+- Drag its top edge to resize; open/closed and height are remembered.
+- It follows the newest line by default and re-arms as soon as you scroll back
+  down. **`↓ latest`** appears while you are scrolled away.
+- While the drawer is shut, the `journal` button in the top bar counts anything
+  at warning priority or worse, so a failure still announces itself.
+
+500 lines stay searchable in the buffer; 300 are rendered. New lines are
+appended rather than re-rendering the list, so the arrival animation fires only
+on genuinely new rows.
 
 ## Rearranging the dashboard
 

@@ -564,10 +564,9 @@ td.mono { font-family: var(--mono); }
 }
 
 .logs {
-  /* A height here acts as the flex basis: it caps the card at a sane size when
-     the card sizes to its content, and still lets the grip stretch it. */
-  height: 300px;
+  flex: 1 1 auto;
   min-height: 0;
+  padding: 0 22px 18px;
   overflow-y: auto;
   overflow-x: hidden;
   font-family: var(--mono);
@@ -597,13 +596,117 @@ td.mono { font-family: var(--mono); }
 
 .empty { color: var(--dimmer); font-family: var(--mono); font-size: 12px; padding: 16px 0; }
 
+
+/* ---------- journal drawer ----------
+
+   Fixed to the viewport rather than parked at the bottom of the grid, so the
+   logs are reachable at any scroll position — and readable *alongside* the
+   gauge that prompted you to look. Closed, it costs nothing but a toggle. */
+
+.drawer {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  height: var(--drawer-h, 340px);
+  max-height: 85vh;
+  background: rgba(6, 9, 18, 0.86);
+  backdrop-filter: blur(26px) saturate(150%);
+  -webkit-backdrop-filter: blur(26px) saturate(150%);
+  border-top: 1px solid var(--stroke-hi);
+  box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.55);
+  transform: translateY(100%);
+  transition: transform 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+.drawer::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(46, 230, 255, 0.6), rgba(167, 139, 250, 0.45), transparent);
+}
+.drawer.open { transform: none; }
+
+.drawer-grip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 10px;
+  cursor: ns-resize;
+  touch-action: none;
+  z-index: 2;
+}
+.drawer-grip::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 46px;
+  height: 3px;
+  margin-left: -23px;
+  border-radius: 99px;
+  background: var(--stroke-hi);
+  transition: background 0.2s;
+}
+.drawer-grip:hover::after { background: var(--cyan); }
+.drawer.resizing { transition: none; }
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  padding: 15px 22px 12px;
+}
+.drawer-head .dtitle {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.drawer-head .tag { font-family: var(--mono); font-size: 11px; color: var(--dimmer); }
+
+/* The toggle carries a count of anything at warning or worse that arrived
+   while the drawer was shut, so a failure cannot pass unseen. */
+#journaltoggle { position: relative; display: inline-flex; align-items: center; gap: 7px; }
+#journaltoggle[aria-pressed="true"] {
+  color: var(--cyan);
+  border-color: rgba(46, 230, 255, 0.45);
+  background: rgba(46, 230, 255, 0.09);
+}
+.badge {
+  min-width: 17px;
+  padding: 1px 5px;
+  border-radius: 99px;
+  background: var(--rose);
+  color: #12060a;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+  box-shadow: 0 0 12px rgba(255, 107, 129, 0.6);
+}
+.badge[hidden] { display: none; }
+
+body.drawer-open .wrap { padding-bottom: calc(var(--drawer-h, 340px) + 34px); }
+
+@media (max-width: 820px) {
+  .drawer { height: min(var(--drawer-h, 340px), 60vh); }
+  .drawer-head { flex-wrap: wrap; padding: 12px 14px 10px; }
+  .logs { padding: 0 14px 14px; }
+}
+
 /* ---------- responsive ---------- */
 
 @media (max-width: 1280px) {
   .card[data-card] { grid-column: span 6 !important; }
   /* The three gauges stay on one row as far down as they legibly can. */
   .card.gauge-card[data-card] { grid-column: span 4 !important; }
-  .card[data-card="processor"], .card[data-card="network"], .card[data-card="journal"] { grid-column: span 12 !important; }
+  .card[data-card="processor"], .card[data-card="network"] { grid-column: span 12 !important; }
 }
 @media (max-width: 980px) {
   .card.gauge-card[data-card] { grid-column: span 4 !important; }

@@ -29,6 +29,7 @@
 
     <div class="chips" id="topchips"></div>
 
+    <button class="ghost" id="journaltoggle" aria-pressed="false" title="Journal (J)">journal<span class="badge" id="journalbadge" hidden>0</span></button>
     <button class="ghost" id="resetlayout" title="Restore the default card arrangement">reset layout</button>
     <div class="clock" id="clock">--:--:--</div>
     <div class="status" id="status" data-state="down"><span class="dot"></span><span id="statustext">offline</span></div>
@@ -175,19 +176,24 @@
       <div class="tablewrap" id="procs"></div>
     </div>
 
-    <div class="card s6" data-card="journal">
-      <h2>Journal
-        <span class="logbar">
-          <input id="logfilter" type="search" placeholder="filter…" aria-label="Filter log lines" spellcheck="false">
-          <button id="logjump" hidden title="Scroll back to the newest line">↓ latest</button>
-          <button id="logpause" aria-pressed="false">pause</button>
-        </span>
-      </h2>
-      <div class="logs grow" id="logs"><div class="empty">waiting for journal…</div></div>
-    </div>
-
   </section>
 </div>
+
+<aside class="drawer" id="drawer" aria-hidden="true" aria-label="Journal">
+  <div class="drawer-grip" id="drawer-grip" title="Drag to resize"></div>
+  <header class="drawer-head">
+    <span class="dtitle">Journal</span>
+    <span class="tag" id="journal-tag"></span>
+    <span class="logbar">
+      <input id="logfilter" type="search" placeholder="filter…" aria-label="Filter log lines" spellcheck="false">
+      <button id="logjump" hidden title="Scroll back to the newest line">↓ latest</button>
+      <button id="logpause" aria-pressed="false">pause</button>
+      <button id="logclose" title="Close (Esc)">close</button>
+    </span>
+  </header>
+  <div class="logs" id="logs"><div class="empty">waiting for journal…</div></div>
+</aside>
+
 <script src="app.js"></script>
 </body>
 </html>
