@@ -1,0 +1,36 @@
+[Unit]
+Description=pidash — live Raspberry Pi metrics dashboard
+Documentation=file:///home/rosselm/golang/pidash/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+ExecStart=/usr/local/bin/pidash -addr :8090
+Restart=on-failure
+RestartSec=5
+
+# Runs as the login user so it inherits the group memberships it needs:
+#   docker  -> /var/run/docker.sock
+#   video   -> /dev/vchiq, for vcgencmd's firmware queries
+#   adm     -> reading the journal
+User=rosselm
+Group=rosselm
+
+# Read-only everywhere; the process writes nothing but its own log output.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+# AF_NETLINK is required: Go enumerates interface addresses over netlink, and
+# without it every interface reports a blank IP.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=no
+# PrivateDevices is deliberately off: it would hide /dev/vchiq and take the
+# SoC temperature, core voltage and throttle flags with it.
+
+[Install]
+WantedBy=multi-user.target

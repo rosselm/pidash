@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#04060d">
+<title>pidash</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23070b16'/%3E%3Cpath d='M16 5l9.5 5.5v11L16 27l-9.5-5.5v-11z' fill='none' stroke='%232ee6ff' stroke-width='2.4'/%3E%3Ccircle cx='16' cy='16' r='3.4' fill='%232ee6ff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="topbar">
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 32 32" aria-hidden="true">
+        <path d="M16 3.2l11.1 6.4v12.8L16 28.8 4.9 22.4V9.6z" fill="none" stroke="#2ee6ff" stroke-width="1.8" opacity=".9"/>
+        <path d="M16 8.4l6.6 3.8v7.6L16 23.6l-6.6-3.8v-7.6z" fill="none" stroke="#a78bfa" stroke-width="1.4" opacity=".8"/>
+        <circle cx="16" cy="16" r="2.6" fill="#2ee6ff"/>
+      </svg>
+      <div>
+        <h1 id="hostname">…</h1>
+        <div class="sub" id="model">connecting</div>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="chips" id="topchips"></div>
+
+    <button class="ghost" id="resetlayout" title="Restore the default card arrangement">reset layout</button>
+    <div class="clock" id="clock">--:--:--</div>
+    <div class="status" id="status" data-state="down"><span class="dot"></span><span id="statustext">offline</span></div>
+  </header>
+
+  <section class="grid" id="grid">
+
+    <!-- ---------- hero gauges ---------- -->
+
+    <div class="card gauge-card s4" data-card="g-temp" id="gauge-temp">
+      <h2>SoC temperature <span class="tag" id="temp-tag"></span></h2>
+      <div class="gauge-wrap">
+        <svg class="gauge" viewBox="0 0 200 200" aria-hidden="true">
+          <g class="ticks"></g>
+          <g transform="rotate(135 100 100)">
+            <circle class="track" cx="100" cy="100" r="80"></circle>
+            <circle class="arc" cx="100" cy="100" r="80"></circle>
+          </g>
+        </svg>
+        <div class="gauge-face">
+          <div class="val"><span class="n">--</span><span class="u">°C</span></div>
+          <div class="cap">degrees</div>
+        </div>
+      </div>
+      <div class="note" id="temp-note">—</div>
+      <canvas data-spark="temp"></canvas>
+    </div>
+
+    <div class="card gauge-card s4" data-card="g-cpu" id="gauge-cpu">
+      <h2>Processor load <span class="tag" id="cpu-gauge-tag"></span></h2>
+      <div class="gauge-wrap">
+        <svg class="gauge" viewBox="0 0 200 200" aria-hidden="true">
+          <g class="ticks"></g>
+          <g transform="rotate(135 100 100)">
+            <circle class="track" cx="100" cy="100" r="80"></circle>
+            <circle class="arc" cx="100" cy="100" r="80"></circle>
+          </g>
+        </svg>
+        <div class="gauge-face">
+          <div class="val"><span class="n">--</span><span class="u">%</span></div>
+          <div class="cap">busy</div>
+        </div>
+      </div>
+      <div class="note" id="cpu-note">—</div>
+      <canvas data-spark="cpu"></canvas>
+    </div>
+
+    <div class="card gauge-card s4" data-card="g-mem" id="gauge-mem">
+      <h2>Memory pressure <span class="tag" id="mem-gauge-tag"></span></h2>
+      <div class="gauge-wrap">
+        <svg class="gauge" viewBox="0 0 200 200" aria-hidden="true">
+          <g class="ticks"></g>
+          <g transform="rotate(135 100 100)">
+            <circle class="track" cx="100" cy="100" r="80"></circle>
+            <circle class="arc" cx="100" cy="100" r="80"></circle>
+          </g>
+        </svg>
+        <div class="gauge-face">
+          <div class="val"><span class="n">--</span><span class="u">%</span></div>
+          <div class="cap">in use</div>
+        </div>
+      </div>
+      <div class="note" id="mem-note">—</div>
+      <canvas data-spark="mem"></canvas>
+    </div>
+
+    <!-- ---------- detail ---------- -->
+
+    <div class="card s8" data-card="processor">
+      <h2>Processor <span class="tag" id="cpu-tag"></span></h2>
+      <div class="chart"><canvas id="chart-cpu"></canvas></div>
+      <div class="legend" id="cpu-legend"></div>
+    </div>
+
+    <div class="card s4" data-card="cores">
+      <h2>Cores <span class="tag" id="core-tag"></span></h2>
+      <div class="cores grow" id="cores"></div>
+    </div>
+
+    <div class="card s4" data-card="thermal">
+      <h2>Thermal &amp; throttle <span class="tag" id="throttle-raw"></span></h2>
+      <div class="chart" style="min-height:110px;max-height:160px"><canvas id="chart-temp"></canvas></div>
+      <div class="stats tight">
+        <div class="stat"><div class="k">Core volts</div><div class="v" id="volts">--<small>V</small></div></div>
+        <div class="stat"><div class="k">Clock</div><div class="v" id="freq">--<small>MHz</small></div></div>
+        <div class="stat"><div class="k">Governor</div><div class="v sm" id="gov">--</div></div>
+      </div>
+      <div class="flags" id="flags"></div>
+    </div>
+
+    <div class="card s4" data-card="memory">
+      <h2>Memory <span class="tag" id="mem-tag"></span></h2>
+      <div class="meters">
+        <div class="meter">
+          <div class="top"><span class="name">RAM</span><span class="amt" id="ram-amt">—</span></div>
+          <div class="stack" id="ram-stack">
+            <span style="background:linear-gradient(90deg,#2ee6ff,#a78bfa)"></span>
+            <span style="background:rgba(167,139,250,.35)"></span>
+            <span style="background:rgba(46,230,255,.18)"></span>
+          </div>
+          <div class="legend" id="ram-legend"></div>
+        </div>
+        <div class="meter">
+          <div class="top"><span class="name">Swap</span><span class="amt" id="swap-amt">—</span></div>
+          <div class="bar" style="--c1:#f472b6;--c2:#a78bfa"><span id="swap-bar" style="width:0%"></span></div>
+        </div>
+      </div>
+      <div class="stats" style="margin-top:18px">
+        <div class="stat"><div class="k">Load 1m</div><div class="v" id="l1">--</div></div>
+        <div class="stat"><div class="k">5m</div><div class="v" id="l5">--</div></div>
+        <div class="stat"><div class="k">15m</div><div class="v" id="l15">--</div></div>
+        <div class="stat"><div class="k">Procs</div><div class="v" id="nprocs">--</div></div>
+      </div>
+    </div>
+
+    <div class="card s4" data-card="storage">
+      <h2>Storage</h2>
+      <div class="meters grow" id="disks"></div>
+    </div>
+
+    <div class="card s8" data-card="network">
+      <h2>Network <span class="tag" id="net-tag"></span></h2>
+      <div class="chart"><canvas id="chart-net"></canvas></div>
+      <div class="legend" id="net-legend"></div>
+    </div>
+
+    <div class="card s4" data-card="ifaces">
+      <h2>Interfaces</h2>
+      <div class="meters grow" id="ifaces"></div>
+    </div>
+
+    <div class="card s6" data-card="containers">
+      <h2>Containers <span class="tag" id="docker-tag"></span></h2>
+      <div class="tablewrap" id="containers"></div>
+    </div>
+
+    <div class="card s6" data-card="units">
+      <h2>Services <span class="tag" id="units-tag"></span></h2>
+      <div class="tablewrap" id="units"></div>
+    </div>
+
+    <div class="card s6" data-card="procs">
+      <h2>Top processes <span class="tag">by CPU</span></h2>
+      <div class="tablewrap" id="procs"></div>
+    </div>
+
+    <div class="card s6" data-card="journal">
+      <h2>Journal
+        <span class="logbar">
+          <input id="logfilter" type="search" placeholder="filter…" aria-label="Filter log lines" spellcheck="false">
+          <button id="logpause" aria-pressed="false">pause</button>
+        </span>
+      </h2>
+      <div class="logs grow" id="logs"><div class="empty">waiting for journal…</div></div>
+    </div>
+
+  </section>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
