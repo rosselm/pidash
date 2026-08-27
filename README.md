@@ -4,8 +4,10 @@ A live metrics dashboard for this Raspberry Pi. Go backend, no dependencies,
 frontend embedded in the binary.
 
 ```
-http://192.168.1.101:8090/
+http://<pi-address>:8090/
 ```
+
+`install.sh` prints the exact URL when it finishes.
 
 ## Why it exists separately from the OTel pipeline
 
@@ -68,10 +70,11 @@ journalctl -u pidash -f
 
 Re-run `install.sh` after any change; it rebuilds and restarts in place.
 
-The service runs as `rosselm` rather than a dedicated user, because it needs
-three group memberships that user already has: `docker` (the socket), `video`
-(`/dev/vchiq`, for `vcgencmd`) and `adm` (the journal). The unit is otherwise
-read-only — `ProtectSystem=strict`, `ProtectHome=read-only`, `NoNewPrivileges`.
+The service runs as a login user rather than a dedicated service account,
+because it needs three group memberships: `docker` (the socket), `video`
+(`/dev/vchiq`, for `vcgencmd`) and `adm` (the journal). `install.sh` sets
+`User=` to whoever runs it and warns about any of the three that are missing.
+The unit is otherwise read-only — `ProtectSystem=strict`, `ProtectHome=read-only`, `NoNewPrivileges`.
 
 Two hardening settings are deliberately *not* tightened further:
 
@@ -142,3 +145,7 @@ web/          index.html, style.css, app.js — embedded via go:embed
 Standard library only, matching the constraint the rest of this host's tooling
 works under. The frontend has no build step and no external assets: no CDN, no
 web fonts, so it loads fine on a LAN with no internet route.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE).

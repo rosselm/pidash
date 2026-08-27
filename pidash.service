@@ -1,6 +1,5 @@
 [Unit]
 Description=pidash — live Raspberry Pi metrics dashboard
-Documentation=file:///home/rosselm/golang/pidash/README.md
 After=network-online.target
 Wants=network-online.target
 
@@ -10,12 +9,14 @@ ExecStart=/usr/local/bin/pidash -addr :8090
 Restart=on-failure
 RestartSec=5
 
-# Runs as the login user so it inherits the group memberships it needs:
+# Runs as a login user rather than a dedicated service account, so it inherits
+# the three group memberships it needs:
 #   docker  -> /var/run/docker.sock
 #   video   -> /dev/vchiq, for vcgencmd's firmware queries
 #   adm     -> reading the journal
-User=rosselm
-Group=rosselm
+# install.sh rewrites these to whoever runs it; `pi` is only the default.
+User=pi
+Group=pi
 
 # Read-only everywhere; the process writes nothing but its own log output.
 NoNewPrivileges=yes
