@@ -6,10 +6,12 @@ A live metrics dashboard for this Raspberry Pi. Go backend, no dependencies,
 frontend embedded in the binary.
 
 ```
-http://<pi-address>:8090/
+https://<node>.<tailnet>.ts.net:8443/     # via `tailscale serve`, real cert
+http://127.0.0.1:8090/                    # what pidash itself listens on
 ```
 
-`install.sh` prints the exact URL when it finishes.
+`install.sh` prints whichever applies when it finishes. The service binds
+loopback by default because the API is unauthenticated — see [HTTPS](#https).
 
 ## Download
 
@@ -20,8 +22,11 @@ embedded in the binary:
 ```bash
 curl -LO https://github.com/rosselm/pidash/releases/latest/download/pidash-linux-arm64
 chmod +x pidash-linux-arm64
-./pidash-linux-arm64 -addr :8090
+./pidash-linux-arm64 -addr 127.0.0.1:8090
 ```
+
+(`-addr :8090` listens on the LAN instead, in the clear — see
+[Security](#security) before doing that.)
 
 `pidash-linux-arm64` covers a Pi 3/4/5 on 64-bit Raspberry Pi OS; `armv7` and
 `armv6` builds cover 32-bit installs and the Zero. To run it as a service
@@ -177,16 +182,72 @@ readable command lines matched that pattern. So **only `argv[0]` is published**:
 the executable path, never the arguments. `-expose-cmdline` opts back in to full
 command lines and logs a warning at startup.
 
-If the network is not trusted, bind to loopback and reach it over an SSH tunnel:
-
-```bash
-pidash -addr 127.0.0.1:8090
-ssh -N -L 8090:127.0.0.1:8090 pi@raspberrypi     # from the client
-```
+The shipped unit therefore binds loopback only — see [HTTPS](#https) for
+putting a certificate in front of it, or for the SSH-tunnel alternative. Pass
+`-addr :8090` to listen on the LAN in the clear, which is worth doing only on a
+network you fully trust.
 
 The service itself needs no privileges beyond the three groups in the unit, and
 never writes anything: `ProtectSystem=strict`, `ProtectHome=read-only`,
 `NoNewPrivileges`.
+
+## HTTPS
+
+pidash speaks plain HTTP and has no certificate handling of its own — that is
+deliberate. Put a TLS terminator in front of it and bind pidash to loopback, so
+the unencrypted port is not spoken on the wire at all. That is what the shipped
+unit does:
+
+```ini
+ExecStart=/usr/local/bin/pidash -addr 127.0.0.1:8090
+```
+
+### With Tailscale (no certificate management, no exposure)
+
+`tailscale serve` obtains and renews a real Let's Encrypt certificate for the
+node's MagicDNS name and proxies to pidash over loopback. Nothing is published
+to the internet, and nothing needs renewing by hand:
+
+```bash
+sudo tailscale up
+sudo tailscale serve --bg --https=8443 http://127.0.0.1:8090
+tailscale serve status
+```
+
+Requires **MagicDNS** and **HTTPS Certificates** enabled for the tailnet, under
+[DNS settings](https://login.tailscale.com/admin/dns). The result is a genuine
+padlock at `https://<node>.<tailnet>.ts.net:8443/`, reachable from any device
+signed into the same tailnet and from nowhere else — the name is NXDOMAIN on
+public resolvers.
+
+The trade-off is that every device that wants in has to join the tailnet. For a
+name that resolves on a plain LAN with no client software, register a domain,
+point an A record at the Pi's private address (private IPs are legal in public
+DNS) and issue a certificate by DNS-01 challenge, which needs no inbound ports
+either.
+
+### Why 8443 rather than 443
+
+If k3s is running on the same host, its servicelb installs an iptables rule
+with no destination-address match:
+
+```
+-A CNI-DN-... -p tcp -m tcp --dport 443 -j DNAT --to-destination 10.42.0.7:443
+```
+
+Every packet to port 443 on *any* local address is redirected to Traefik,
+including the Tailscale address — so `tailscaled` binds `100.x.y.z:443`
+successfully and still never receives a connection. The symptom is a
+`CN = TRAEFIK DEFAULT CERT` certificate where a Let's Encrypt one was expected.
+Serving on 8443 sidesteps it without touching the cluster.
+
+### Reaching it without Tailscale
+
+An SSH tunnel needs nothing installed on the Pi:
+
+```bash
+ssh -N -L 8090:127.0.0.1:8090 pi@raspberrypi   # then open http://localhost:8090/
+```
 
 ## Tests
 

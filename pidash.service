@@ -5,7 +5,11 @@ Wants=network-online.target
 
 [Service]
 Type=exec
-ExecStart=/usr/local/bin/pidash -addr :8090
+# Loopback only. The API is unauthenticated and serves the whole journal, the
+# process table and the container list, so it should not be spoken in the clear
+# on the LAN. Put a TLS terminator in front of it — `tailscale serve` needs no
+# certificate management at all; see the README.
+ExecStart=/usr/local/bin/pidash -addr 127.0.0.1:8090
 Restart=on-failure
 RestartSec=5
 

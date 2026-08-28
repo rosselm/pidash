@@ -44,6 +44,14 @@ sudo systemctl restart pidash
 sleep 2
 systemctl --no-pager --lines=0 status pidash || true
 
-ip=$(hostname -I | awk '{print $1}')
 echo
-echo "==> pidash is up at http://${ip}:${PORT}/"
+addr=$(awk -F' -addr ' '/^ExecStart=/ {split($2,a," "); print a[1]}' pidash.service)
+echo "==> pidash is listening on ${addr:-:$PORT}"
+if serve=$(tailscale serve status 2>/dev/null | grep -m1 '^https://'); then
+  echo "==> reachable at ${serve%% *}"
+elif [ "${addr#127.0.0.1}" != "$addr" ]; then
+  # Bound to loopback with nothing in front of it: say so rather than print a
+  # LAN URL that will not answer.
+  echo "    loopback only — reach it over an SSH tunnel, or put a TLS"
+  echo "    terminator in front of it (see 'HTTPS' in the README)"
+fi
