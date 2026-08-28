@@ -44,7 +44,7 @@ func main() {
 		topN      = flag.Int("top", 8, "number of processes in the top table")
 		fullCmd   = flag.Bool("expose-cmdline", false, "publish full process command lines (argv often carries credentials)")
 		unitsFlag = flag.String("units", "otelcol-contrib,pi-temp-exporter,docker,ssh", "comma-separated systemd units to watch")
-		logsFlag  = flag.String("log-units", "otelcol-contrib,pi-temp-exporter", "comma-separated units to tail; empty tails the whole journal")
+		logsFlag  = flag.String("log-units", "", "comma-separated units to tail; empty (the default) tails the whole journal")
 		sock      = flag.String("docker-sock", "/var/run/docker.sock", "docker socket path, empty to disable")
 		showVer   = flag.Bool("version", false, "print version and exit")
 	)

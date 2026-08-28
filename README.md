@@ -49,7 +49,7 @@ telemetry path does not. It shares no code, no config and no port with
 | Containers | Docker Engine API over `/var/run/docker.sock` |
 | Services | `systemctl show` |
 | Top processes | `/proc/<pid>/{stat,statm,cmdline,status}` |
-| Journal drawer (`J`) | one shared `journalctl -f -o json` |
+| Journal drawer (`J`) | one shared `journalctl -f -o json`, whole journal by default |
 
 Throttle flags are reported in both tenses: the low bits of the firmware word are
 "right now", the same bits 16 places up are "since boot". This board currently
@@ -65,6 +65,9 @@ scrolling past everything else — and the moment you actually want logs is the
 moment you are staring at a spike somewhere further up the page.
 
 - **`J`** (or backtick) toggles it, **`Esc`** closes it.
+- The **whole journal** is tailed by default. The unit dropdown is built from
+  what actually arrives, so it lists the units that are really logging rather
+  than a list configured up front. `-log-units` narrows it at the source.
 - Drag its top edge to resize; open/closed and height are remembered.
 - It follows the newest line by default and re-arms as soon as you scroll back
   down. **`↓ latest`** appears while you are scrolled away.

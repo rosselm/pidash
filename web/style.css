@@ -537,6 +537,21 @@ td.mono { font-family: var(--mono); }
 /* ---------- log stream ---------- */
 
 .logbar { display: flex; align-items: center; gap: 9px; margin-left: auto; }
+.logbar select {
+  max-width: 168px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--stroke);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  outline: none;
+  cursor: pointer;
+}
+.logbar select:focus { border-color: rgba(46, 230, 255, 0.5); }
+.logbar select option { background: #0a0f1c; color: var(--text); }
+
 .logbar input {
   width: 148px;
   padding: 5px 10px;

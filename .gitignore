@@ -1,3 +1,6 @@
 # Build output — reproduced by ./install.sh and ./release.sh
 /pidash
 /dist/
+
+# Local tooling for tools/uicheck.py
+/.venv/

@@ -524,7 +524,7 @@
   // Keeping those apart means a filter can reach further back than the visible
   // list without paying to lay out every row.
   const BUFFER = 500, DOM_CAP = 300;
-  const logState = { lines: [], paused: false, filter: '', pending: 0, follow: true };
+  const logState = { lines: [], paused: false, filter: '', unit: '', pending: 0, follow: true, units: new Set() };
   const logsEl = $('#logs');
   const jumpBtn = $('#logjump');
 
@@ -539,7 +539,27 @@
   }
 
   const matches = (l) =>
-    !logState.filter || (l.msg + ' ' + l.unit).toLowerCase().includes(logState.filter);
+    (!logState.unit || l.unit === logState.unit) &&
+    (!logState.filter || (l.msg + ' ' + l.unit).toLowerCase().includes(logState.filter));
+
+  // The whole journal is tailed by default, so the unit list is discovered from
+  // what actually arrives rather than configured up front.
+  const unitSelect = $('#logunit');
+  function noteUnit(unit) {
+    if (!unit || logState.units.has(unit)) return;
+    logState.units.add(unit);
+    const chosen = unitSelect.value;
+    unitSelect.innerHTML = '<option value="">all units</option>' +
+      [...logState.units].sort().map((u) => `<option value="${esc(u)}">${esc(u)}</option>`).join('');
+    unitSelect.value = chosen;
+  }
+
+  unitSelect.addEventListener('change', (e) => {
+    logState.unit = e.target.value;
+    logState.follow = true;
+    jumpBtn.hidden = true;
+    renderLogs();
+  });
 
   const nearBottom = () => logsEl.scrollHeight - logsEl.scrollTop - logsEl.clientHeight < 24;
   const toBottom = () => { logsEl.scrollTop = logsEl.scrollHeight; };
@@ -752,7 +772,8 @@
   connect('/api/logs', 'log', (l) => {
     logState.lines.push(l);
     if (logState.lines.length > BUFFER) logState.lines = logState.lines.slice(-BUFFER);
-    $('#journal-tag').textContent = `${logState.lines.length} lines`;
+    noteUnit(l.unit);
+    $('#journal-tag').textContent = `${logState.lines.length} lines · ${logState.units.size} units`;
     // Count warnings and errors that land while the drawer is shut, so a
     // failure still announces itself on a dashboard nobody is scrolling.
     if (!drawerIsOpen() && l.prio <= 4) {
