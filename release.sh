@@ -33,7 +33,15 @@ build amd64 ""  pidash-linux-amd64  "x86-64 Linux (no vcgencmd; thermals fall ba
 
 ( cd "$OUT" && sha256sum pidash-* > SHA256SUMS )
 
-cat > "$OUT/NOTES.md" <<NOTES
+# Optional: a file of "what changed" prose to lead the release notes with.
+if [ -n "${NOTES_PREFIX:-}" ] && [ -f "$NOTES_PREFIX" ]; then
+  cat "$NOTES_PREFIX" > "$OUT/NOTES.md"
+  printf '\n' >> "$OUT/NOTES.md"
+else
+  : > "$OUT/NOTES.md"
+fi
+
+cat >> "$OUT/NOTES.md" <<NOTES
 Download the binary for your board, make it executable, and run it. No runtime
 dependencies — the frontend is embedded in the binary.
 
