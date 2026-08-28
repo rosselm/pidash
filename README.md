@@ -164,6 +164,28 @@ cgroup_memory=1 cgroup_enable=memory
 That costs a small amount of kernel memory overhead and **requires a reboot**,
 so it is left as a deliberate choice rather than done for you.
 
+## Checking the UI
+
+pidash is a visual program, and for several commits it was verified only by
+reading its own source — which is how a table whose numeric columns collided,
+and a Storage panel listing the root filesystem three times, both shipped.
+[`tools/uicheck.py`](tools/uicheck.py) drives the running dashboard in headless
+Chromium and fails on the things source review cannot see:
+
+```bash
+sudo apt install chromium
+python3 -m venv .venv && .venv/bin/pip install playwright
+.venv/bin/python tools/uicheck.py --url http://localhost:8090 --out /tmp/shots
+```
+
+It asserts no console errors, no horizontal overflow at 1680/1280/980/820/420px,
+no card clipping its own content, no table cell wrapping, that the drawer opens
+on `J`, and that the per-core bars, filesystems and four throttle flags all
+render. It also writes screenshots of the dashboard and the open drawer.
+
+Playwright ships no arm64 browser build, so it drives the system Chromium and
+downloads nothing.
+
 ## Layout
 
 ```

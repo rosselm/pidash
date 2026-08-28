@@ -347,15 +347,22 @@ func readDisks() []Disk {
 		return nil
 	}
 	defer f.Close()
-	var out []Disk
-	seen := map[string]bool{}
+
+	// One filesystem can show up at several mount points: bind mounts, and the
+	// private /tmp and /var/tmp systemd hands a service running under
+	// PrivateTmp=yes. Keep the shortest path per device, so the root
+	// filesystem is not reported three times over at three different names.
+	byDevice := map[string]Disk{}
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		fields := strings.Fields(sc.Text())
-		if len(fields) < 3 || !realFS[fields[2]] || seen[fields[1]] {
+		if len(fields) < 3 || !realFS[fields[2]] {
 			continue
 		}
-		seen[fields[1]] = true
+		mount := strings.ReplaceAll(fields[1], `\040`, " ")
+		if prev, seen := byDevice[fields[0]]; seen && len(prev.Mount) <= len(mount) {
+			continue
+		}
 		var st syscall.Statfs_t
 		if err := syscall.Statfs(fields[1], &st); err != nil {
 			continue
@@ -363,7 +370,7 @@ func readDisks() []Disk {
 		bs := uint64(st.Bsize)
 		d := Disk{
 			Device: fields[0],
-			Mount:  strings.ReplaceAll(fields[1], `\040`, " "),
+			Mount:  mount,
 			FSType: fields[2],
 			Total:  st.Blocks * bs,
 			Free:   st.Bavail * bs,
@@ -373,6 +380,11 @@ func readDisks() []Disk {
 		if denom := d.Used + d.Free; denom > 0 {
 			d.Pct = 100 * float64(d.Used) / float64(denom)
 		}
+		byDevice[fields[0]] = d
+	}
+
+	out := make([]Disk, 0, len(byDevice))
+	for _, d := range byDevice {
 		out = append(out, d)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Mount < out[j].Mount })

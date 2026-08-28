@@ -109,7 +109,7 @@
       <div class="cores grow" id="cores"></div>
     </div>
 
-    <div class="card s4" data-card="thermal">
+    <div class="card s6" data-card="thermal">
       <h2>Thermal &amp; throttle <span class="tag" id="throttle-raw"></span></h2>
       <div class="chart" style="min-height:110px;max-height:160px"><canvas id="chart-temp"></canvas></div>
       <div class="stats tight">
@@ -120,9 +120,9 @@
       <div class="flags" id="flags"></div>
     </div>
 
-    <div class="card s4" data-card="memory">
+    <div class="card s6" data-card="memory">
       <h2>Memory <span class="tag" id="mem-tag"></span></h2>
-      <div class="meters">
+      <div class="meters grow">
         <div class="meter">
           <div class="top"><span class="name">RAM</span><span class="amt" id="ram-amt">—</span></div>
           <div class="stack" id="ram-stack">
@@ -143,11 +143,6 @@
         <div class="stat"><div class="k">15m</div><div class="v" id="l15">--</div></div>
         <div class="stat"><div class="k">Procs</div><div class="v" id="nprocs">--</div></div>
       </div>
-    </div>
-
-    <div class="card s4" data-card="storage">
-      <h2>Storage</h2>
-      <div class="meters grow" id="disks"></div>
     </div>
 
     <div class="card s8" data-card="network">
@@ -171,9 +166,14 @@
       <div class="tablewrap" id="units"></div>
     </div>
 
-    <div class="card s6" data-card="procs">
+    <div class="card s8" data-card="procs">
       <h2>Top processes <span class="tag">by CPU</span></h2>
       <div class="tablewrap" id="procs"></div>
+    </div>
+
+    <div class="card s4" data-card="storage">
+      <h2>Storage</h2>
+      <div class="meters grow" id="disks"></div>
     </div>
 
   </section>
