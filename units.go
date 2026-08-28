@@ -42,8 +42,16 @@ func readUnits(ctx context.Context, names []string) []Unit {
 	if err != nil && len(out) == 0 {
 		return nil
 	}
+	return parseUnitShow(string(out), bootTimeUnix(), cgroupRSS)
+}
 
-	bootUnix := bootTimeUnix()
+// parseUnitShow reads systemctl's key=value records, one per unit, separated by
+// blank lines.
+//
+// rss is how a unit's memory is recovered when the kernel cannot report it —
+// injected rather than called directly so the parser is testable without a
+// live cgroup tree.
+func parseUnitShow(out string, bootUnix int64, rss func(string) uint64) []Unit {
 	var units []Unit
 	cur := map[string]string{}
 	flush := func() {
@@ -60,9 +68,9 @@ func readUnits(ctx context.Context, names []string) []Unit {
 		u.PID, _ = strconv.Atoi(cur["MainPID"])
 		if v, err := strconv.ParseUint(cur["MemoryCurrent"], 10, 64); err == nil {
 			u.Mem = v
-		} else if cg := cur["ControlGroup"]; cg != "" {
+		} else if cg := cur["ControlGroup"]; cg != "" && rss != nil {
 			// systemd prints "[not set]" when the memory controller is off.
-			u.Mem = cgroupRSS("/sys/fs/cgroup" + cg)
+			u.Mem = rss("/sys/fs/cgroup" + cg)
 		}
 		// systemd reports monotonic microseconds since boot; convert to wall
 		// clock so the browser can render an age without knowing boot time.
@@ -75,7 +83,7 @@ func readUnits(ctx context.Context, names []string) []Unit {
 		cur = map[string]string{}
 	}
 
-	sc := bufio.NewScanner(strings.NewReader(string(out)))
+	sc := bufio.NewScanner(strings.NewReader(out))
 	for sc.Scan() {
 		line := sc.Text()
 		if line == "" {

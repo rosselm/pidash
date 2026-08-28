@@ -7,6 +7,7 @@ import (
 	"context"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -26,6 +27,14 @@ type Sampler struct {
 	unitList []string
 	topN     int
 
+	// procEvery throttles the process table: walking every /proc/<pid>/stat is
+	// by far the most expensive thing done per tick, and a top-N table does not
+	// need to move as fast as a gauge.
+	procEvery int
+	// exposeCmdline publishes full command lines. Off by default: the API is
+	// unauthenticated, and argv routinely carries tokens and passwords.
+	exposeCmdline bool
+
 	mu   sync.Mutex
 	subs map[chan *Snapshot]struct{}
 	last *Snapshot
@@ -34,18 +43,31 @@ type Sampler struct {
 	prevCPU   cpuTimes
 	prevCores []cpuTimes
 	prevNet   map[string]netCounters
-	prevProcs map[int]procTime
+
+	tick          int
+	prevProcs     map[int]procTime
+	prevProcTotal uint64
+	lastProcs     []Proc
 
 	slow atomic.Pointer[slowState]
 }
 
-func NewSampler(interval time.Duration, docker *dockerClient, units []string, topN int) *Sampler {
+func NewSampler(interval, procInterval time.Duration, docker *dockerClient, units []string, topN int, exposeCmdline bool) *Sampler {
+	every := 1
+	if interval > 0 {
+		every = int(procInterval / interval)
+	}
+	if every < 1 {
+		every = 1
+	}
 	return &Sampler{
-		interval: interval,
-		docker:   docker,
-		unitList: units,
-		topN:     topN,
-		subs:     map[chan *Snapshot]struct{}{},
+		interval:      interval,
+		docker:        docker,
+		unitList:      units,
+		topN:          topN,
+		procEvery:     every,
+		exposeCmdline: exposeCmdline,
+		subs:          map[chan *Snapshot]struct{}{},
 	}
 }
 
@@ -135,7 +157,7 @@ func (s *Sampler) collect() *Snapshot {
 
 	aggCPU, coreCPU := readCPUTimes()
 	netNow := readNetCounters()
-	procNow := readProcTimes()
+	s.tick++
 
 	snap := &Snapshot{
 		TS:      now.UnixMilli(),
@@ -202,17 +224,23 @@ func (s *Sampler) collect() *Snapshot {
 	}
 
 	// --- processes ---
-	if s.prevProcs != nil {
-		snap.Procs = s.topProcesses(procNow, aggCPU.total-s.prevCPU.total, snap.Mem.Total)
+	// Sampled on its own, slower cadence, so the CPU share is measured across
+	// the whole gap rather than a single tick of it.
+	if s.prevProcs == nil || s.tick%s.procEvery == 0 {
+		procNow := readProcTimes()
+		if s.prevProcs != nil {
+			s.lastProcs = s.topProcesses(procNow, aggCPU.total-s.prevProcTotal, snap.Mem.Total)
+		}
+		s.prevProcs, s.prevProcTotal = procNow, aggCPU.total
 	}
+	snap.Procs = s.lastProcs
 
 	if st := s.slow.Load(); st != nil {
 		snap.Containers = st.Containers
 		snap.Units = st.Units
 	}
 
-	s.prevAt, s.prevCPU, s.prevCores = now, aggCPU, coreCPU
-	s.prevNet, s.prevProcs = netNow, procNow
+	s.prevAt, s.prevCPU, s.prevCores, s.prevNet = now, aggCPU, coreCPU, netNow
 	return snap
 }
 
@@ -251,7 +279,7 @@ func (s *Sampler) topProcesses(cur map[int]procTime, totalJiffies uint64, memTot
 	out := make([]Proc, 0, len(ranked))
 	for _, r := range ranked {
 		p := Proc{PID: r.pid, Name: r.name, CPU: r.cpu, RSS: procRSS(r.pid)}
-		p.Cmd = procCmdline(r.pid)
+		p.Cmd = joinArgs(procArgs(r.pid), s.exposeCmdline)
 		p.User = procUser(r.pid)
 		if memTotal > 0 {
 			p.MemP = 100 * float64(p.RSS) / float64(memTotal)
@@ -259,6 +287,19 @@ func (s *Sampler) topProcesses(cur map[int]procTime, totalJiffies uint64, memTot
 		out = append(out, p)
 	}
 	return out
+}
+
+// joinArgs renders a process's argv for publication. Without full disclosure
+// only argv[0] is returned: the snapshot API is unauthenticated on the LAN, and
+// credentials passed as flags would otherwise be readable by anyone on it.
+func joinArgs(args []string, full bool) string {
+	if len(args) == 0 {
+		return ""
+	}
+	if full {
+		return strings.Join(args, " ")
+	}
+	return args[0]
 }
 
 func perSecond(cur, prev uint64, elapsed float64) float64 {

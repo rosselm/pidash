@@ -1,0 +1,58 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "not gofmt'd:"; echo "$unformatted"
+            gofmt -d .
+            exit 1
+          fi
+
+      - run: go vet ./...
+      - run: go test -race -cover ./...
+
+  build:
+    runs-on: ubuntu-latest
+    needs: check
+    strategy:
+      matrix:
+        include:
+          - { goarch: arm64, goarm: '',  label: 'Pi 3/4/5 64-bit' }
+          - { goarch: arm,   goarm: '7', label: 'Pi 2/3/4 32-bit' }
+          - { goarch: arm,   goarm: '6', label: 'Pi 1 / Zero' }
+          - { goarch: amd64, goarm: '',  label: 'x86-64' }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      # Every release target must at least compile; the frontend is embedded,
+      # so this also catches a missing or misnamed file under web/.
+      - name: build ${{ matrix.label }}
+        env:
+          CGO_ENABLED: '0'
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+        run: go build -trimpath -ldflags="-s -w" -o /dev/null .

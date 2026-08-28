@@ -9,6 +9,7 @@ package main
 
 import (
 	"bufio"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -138,7 +139,13 @@ func readCPUTimes() (agg cpuTimes, cores []cpuTimes) {
 		return
 	}
 	defer f.Close()
-	sc := bufio.NewScanner(f)
+	return parseCPUTimes(f)
+}
+
+// parseCPUTimes reads the aggregate and per-core lines of /proc/stat. Split out
+// from the file access so it can be exercised against fixtures.
+func parseCPUTimes(r io.Reader) (agg cpuTimes, cores []cpuTimes) {
+	sc := bufio.NewScanner(r)
 	for sc.Scan() {
 		line := sc.Text()
 		if !strings.HasPrefix(line, "cpu") {
@@ -232,8 +239,12 @@ func readMem() Mem {
 		return Mem{}
 	}
 	defer f.Close()
+	return parseMeminfo(f)
+}
+
+func parseMeminfo(r io.Reader) Mem {
 	vals := map[string]uint64{}
-	sc := bufio.NewScanner(f)
+	sc := bufio.NewScanner(r)
 	for sc.Scan() {
 		key, rest, ok := strings.Cut(sc.Text(), ":")
 		if !ok {
@@ -294,7 +305,14 @@ func readThermal() Thermal {
 	if !ok {
 		return t
 	}
-	t.Raw = "0x" + strconv.FormatUint(word, 16)
+	t.Raw, t.Flags, t.AnyNow, t.AnyEver = decodeThrottle(word)
+	return t
+}
+
+// decodeThrottle expands the firmware's get_throttled word. The low bits are
+// "right now"; the same flag sixteen places up is "has happened since boot".
+func decodeThrottle(word uint64) (raw string, flags []Flag, anyNow, anyEver bool) {
+	raw = "0x" + strconv.FormatUint(word, 16)
 	for _, b := range throttleBits {
 		f := Flag{
 			Name:   b.name,
@@ -302,21 +320,29 @@ func readThermal() Thermal {
 			Now:    word&(1<<b.bit) != 0,
 			EverOn: word&(1<<(b.bit+16)) != 0,
 		}
-		t.AnyNow = t.AnyNow || f.Now
-		t.AnyEver = t.AnyEver || f.EverOn
-		t.Flags = append(t.Flags, f)
+		anyNow = anyNow || f.Now
+		anyEver = anyEver || f.EverOn
+		flags = append(flags, f)
 	}
-	return t
+	return raw, flags, anyNow, anyEver
+}
+
+// parseThrottleHex reads vcgencmd's "throttled=0x50000" output.
+func parseThrottleHex(s string) (uint64, bool) {
+	_, hex, ok := strings.Cut(strings.TrimSpace(s), "=0x")
+	if !ok {
+		return 0, false
+	}
+	n, err := strconv.ParseUint(hex, 16, 64)
+	return n, err == nil
 }
 
 // readThrottleWord prefers the firmware directly, falling back to the sysfs
 // node exposed by newer kernels when vcgencmd is unavailable.
 func readThrottleWord() (uint64, bool) {
 	if out, err := exec.Command("vcgencmd", "get_throttled").Output(); err == nil {
-		if _, hex, ok := strings.Cut(strings.TrimSpace(string(out)), "=0x"); ok {
-			if n, err := strconv.ParseUint(hex, 16, 64); err == nil {
-				return n, true
-			}
+		if n, ok := parseThrottleHex(string(out)); ok {
+			return n, true
 		}
 	}
 	for _, p := range []string{
@@ -341,6 +367,41 @@ var realFS = map[string]bool{
 	"xfs": true, "btrfs": true, "f2fs": true, "exfat": true, "ntfs3": true,
 }
 
+// mountRef is one candidate filesystem, before statfs is asked about it.
+type mountRef struct{ device, mount, fstype string }
+
+// selectMounts picks the filesystems worth showing from /proc/mounts.
+//
+// One filesystem can appear at several mount points: bind mounts, and the
+// private /tmp and /var/tmp systemd hands a service running under
+// PrivateTmp=yes. Keeping the shortest path per device stops the root
+// filesystem being reported three times over under three different names.
+func selectMounts(r io.Reader) []mountRef {
+	byDevice := map[string]mountRef{}
+	sc := bufio.NewScanner(r)
+	for sc.Scan() {
+		fields := strings.Fields(sc.Text())
+		if len(fields) < 3 || !realFS[fields[2]] {
+			continue
+		}
+		m := mountRef{
+			device: fields[0],
+			mount:  strings.ReplaceAll(fields[1], `\040`, " "),
+			fstype: fields[2],
+		}
+		if prev, seen := byDevice[m.device]; seen && len(prev.mount) <= len(m.mount) {
+			continue
+		}
+		byDevice[m.device] = m
+	}
+	out := make([]mountRef, 0, len(byDevice))
+	for _, m := range byDevice {
+		out = append(out, m)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].mount < out[j].mount })
+	return out
+}
+
 func readDisks() []Disk {
 	f, err := os.Open("/proc/mounts")
 	if err != nil {
@@ -348,30 +409,17 @@ func readDisks() []Disk {
 	}
 	defer f.Close()
 
-	// One filesystem can show up at several mount points: bind mounts, and the
-	// private /tmp and /var/tmp systemd hands a service running under
-	// PrivateTmp=yes. Keep the shortest path per device, so the root
-	// filesystem is not reported three times over at three different names.
-	byDevice := map[string]Disk{}
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		fields := strings.Fields(sc.Text())
-		if len(fields) < 3 || !realFS[fields[2]] {
-			continue
-		}
-		mount := strings.ReplaceAll(fields[1], `\040`, " ")
-		if prev, seen := byDevice[fields[0]]; seen && len(prev.Mount) <= len(mount) {
-			continue
-		}
+	var out []Disk
+	for _, m := range selectMounts(f) {
 		var st syscall.Statfs_t
-		if err := syscall.Statfs(fields[1], &st); err != nil {
+		if err := syscall.Statfs(m.mount, &st); err != nil {
 			continue
 		}
 		bs := uint64(st.Bsize)
 		d := Disk{
-			Device: fields[0],
-			Mount:  mount,
-			FSType: fields[2],
+			Device: m.device,
+			Mount:  m.mount,
+			FSType: m.fstype,
 			Total:  st.Blocks * bs,
 			Free:   st.Bavail * bs,
 		}
@@ -380,14 +428,8 @@ func readDisks() []Disk {
 		if denom := d.Used + d.Free; denom > 0 {
 			d.Pct = 100 * float64(d.Used) / float64(denom)
 		}
-		byDevice[fields[0]] = d
-	}
-
-	out := make([]Disk, 0, len(byDevice))
-	for _, d := range byDevice {
 		out = append(out, d)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Mount < out[j].Mount })
 	return out
 }
 
@@ -401,8 +443,12 @@ func readNetCounters() map[string]netCounters {
 		return nil
 	}
 	defer f.Close()
+	return parseNetDev(f)
+}
+
+func parseNetDev(r io.Reader) map[string]netCounters {
 	out := map[string]netCounters{}
-	sc := bufio.NewScanner(f)
+	sc := bufio.NewScanner(r)
 	for sc.Scan() {
 		name, rest, ok := strings.Cut(sc.Text(), ":")
 		if !ok {
@@ -498,22 +544,33 @@ func readProcTimes() map[int]procTime {
 		if err != nil {
 			continue
 		}
-		// comm can contain spaces and parens, so split on the LAST ')'.
-		lp := strings.IndexByte(string(b), '(')
-		rp := strings.LastIndexByte(string(b), ')')
-		if lp < 0 || rp < lp {
-			continue
+		if pt, ok := parseProcStat(b); ok {
+			out[pid] = pt
 		}
-		name := string(b[lp+1 : rp])
-		fields := strings.Fields(string(b[rp+2:]))
-		if len(fields) < 22 {
-			continue
-		}
-		utime, _ := strconv.ParseUint(fields[11], 10, 64) // field 14 overall
-		stime, _ := strconv.ParseUint(fields[12], 10, 64)
-		out[pid] = procTime{jiffies: utime + stime, name: name}
 	}
 	return out
+}
+
+// parseProcStat pulls the command name and CPU jiffies out of /proc/<pid>/stat.
+// comm is wrapped in parens and may itself contain spaces and parens, so the
+// split has to be on the LAST ')' rather than on whitespace.
+func parseProcStat(b []byte) (procTime, bool) {
+	s := string(b)
+	lp := strings.IndexByte(s, '(')
+	rp := strings.LastIndexByte(s, ')')
+	if lp < 0 || rp < lp || rp+2 > len(s) {
+		return procTime{}, false
+	}
+	fields := strings.Fields(s[rp+2:])
+	if len(fields) < 22 {
+		return procTime{}, false
+	}
+	utime, err1 := strconv.ParseUint(fields[11], 10, 64) // field 14 overall
+	stime, err2 := strconv.ParseUint(fields[12], 10, 64)
+	if err1 != nil || err2 != nil {
+		return procTime{}, false
+	}
+	return procTime{jiffies: utime + stime, name: s[lp+1 : rp]}, true
 }
 
 func procRSS(pid int) uint64 {
@@ -529,13 +586,23 @@ func procRSS(pid int) uint64 {
 	return pages * uint64(os.Getpagesize())
 }
 
-func procCmdline(pid int) string {
+func procArgs(pid int) []string {
 	b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/cmdline")
-	if err != nil || len(b) == 0 {
-		return ""
+	if err != nil {
+		return nil
 	}
+	return parseCmdline(b)
+}
+
+// parseCmdline splits the NUL-separated argv of /proc/<pid>/cmdline. Splitting
+// rather than joining matters: argv[0] alone is what gets published unless full
+// command lines are explicitly opted into, and argv[0] may contain spaces.
+func parseCmdline(b []byte) []string {
 	s := strings.TrimRight(string(b), "\x00")
-	return strings.Join(strings.Split(s, "\x00"), " ")
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, "\x00")
 }
 
 func procUser(pid int) string {

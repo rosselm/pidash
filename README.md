@@ -1,5 +1,7 @@
 # pidash
 
+[![ci](https://github.com/rosselm/pidash/actions/workflows/ci.yml/badge.svg)](https://github.com/rosselm/pidash/actions/workflows/ci.yml)
+
 A live metrics dashboard for this Raspberry Pi. Go backend, no dependencies,
 frontend embedded in the binary.
 
@@ -120,13 +122,30 @@ Two hardening settings are deliberately *not* tightened further:
 ## Flags
 
 ```
--addr        :8090                       listen address
--interval    1s                          sampling interval
--top         8                            processes in the top table
--units       otelcol-contrib,pi-temp-exporter,docker,ssh
--log-units   otelcol-contrib,pi-temp-exporter    (empty = whole journal)
--docker-sock /var/run/docker.sock         empty to disable the panel
+-addr           :8090                    listen address
+-interval       1s                       sampling interval
+-proc-interval  3s                       how often to walk /proc for the process table
+-top            8                        processes in the top table
+-expose-cmdline false                    publish full process command lines
+-units          otelcol-contrib,pi-temp-exporter,docker,ssh
+-log-units      otelcol-contrib,pi-temp-exporter   (empty = whole journal)
+-docker-sock    /var/run/docker.sock     empty to disable the panel
+-version        print version and exit
 ```
+
+`-proc-interval` is separate from `-interval` because walking every
+`/proc/<pid>/stat` is by far the most expensive thing done per tick, and a top-N
+table does not need to move as fast as a gauge. Measured on an idle Pi 4 with
+~190 processes, over two 60-second windows:
+
+| `-proc-interval` | CPU used in 60s | share of one core |
+|---|---|---|
+| `1s` | 1.24 s | 2.07% |
+| `3s` (default) | 0.89 s | 1.48% |
+
+A monitoring tool that perturbs what it measures is a problem, so this is worth
+re-checking after a change: `systemctl show pidash -p CPUUsageNSec` twice, a
+minute apart, is enough.
 
 ## API
 
@@ -142,6 +161,46 @@ curl -s localhost:8090/healthz
 `/api/stream` and `/api/logs` are Server-Sent Events. One sampler goroutine
 feeds every connected browser: opening ten tabs does not multiply the `/proc`
 traffic, and all tabs agree on the same CPU percentages.
+
+## Security
+
+**There is no authentication.** Anyone who can reach the port can read every
+metric. That is a deliberate fit for a trusted home LAN, but it has one
+consequence worth stating plainly:
+
+`/proc/<pid>/cmdline` routinely contains credentials — `--token=`, `--password=`,
+`--api-key=` — passed as flags. On the machine this was written for, 2 of 190
+readable command lines matched that pattern. So **only `argv[0]` is published**:
+the executable path, never the arguments. `-expose-cmdline` opts back in to full
+command lines and logs a warning at startup.
+
+If the network is not trusted, bind to loopback and reach it over an SSH tunnel:
+
+```bash
+pidash -addr 127.0.0.1:8090
+ssh -N -L 8090:127.0.0.1:8090 pi@raspberrypi     # from the client
+```
+
+The service itself needs no privileges beyond the three groups in the unit, and
+never writes anything: `ProtectSystem=strict`, `ProtectHome=read-only`,
+`NoNewPrivileges`.
+
+## Tests
+
+```bash
+go test ./...          # parsers, decoders, and the sampler's ranking
+go test -race ./...    # note: does not run on a Pi, see below
+```
+
+The suite covers the pure functions — `/proc/stat`, `/proc/meminfo`,
+`/proc/net/dev` and `/proc/<pid>/stat` parsing, the throttle bit-word, journald's
+two MESSAGE encodings, Docker's CPU-percent and page-cache arithmetic,
+`systemctl show` records, and process ranking — at 90–100% each. Two of them are
+regression tests for bugs that actually shipped: filesystems deduplicating by
+device, and `argv` never being published by default.
+
+`-race` aborts on this board with `ThreadSanitizer: unsupported VMA range` (the
+Pi kernel uses a 39-bit address space, TSan wants 48). CI runs it on amd64.
 
 ## Known limitation on this board: cgroup memory accounting is off
 

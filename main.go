@@ -40,7 +40,9 @@ func main() {
 	var (
 		addr      = flag.String("addr", ":8090", "listen address")
 		interval  = flag.Duration("interval", time.Second, "sampling interval")
+		procEvery = flag.Duration("proc-interval", 3*time.Second, "how often to walk /proc for the process table")
 		topN      = flag.Int("top", 8, "number of processes in the top table")
+		fullCmd   = flag.Bool("expose-cmdline", false, "publish full process command lines (argv often carries credentials)")
 		unitsFlag = flag.String("units", "otelcol-contrib,pi-temp-exporter,docker,ssh", "comma-separated systemd units to watch")
 		logsFlag  = flag.String("log-units", "otelcol-contrib,pi-temp-exporter", "comma-separated units to tail; empty tails the whole journal")
 		sock      = flag.String("docker-sock", "/var/run/docker.sock", "docker socket path, empty to disable")
@@ -65,7 +67,10 @@ func main() {
 		}
 	}
 
-	sampler := NewSampler(*interval, docker, splitList(*unitsFlag), *topN)
+	sampler := NewSampler(*interval, *procEvery, docker, splitList(*unitsFlag), *topN, *fullCmd)
+	if *fullCmd {
+		log.Print("warning: -expose-cmdline is on; the unauthenticated API will publish full argv")
+	}
 	go sampler.Run(ctx)
 
 	tail := NewLogTail(200)

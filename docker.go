@@ -33,6 +33,9 @@ type Container struct {
 	Created int64   `json:"created"`
 }
 
+// maxStatsInFlight bounds concurrent /stats requests to the engine.
+const maxStatsInFlight = 4
+
 type dockerClient struct {
 	http *http.Client
 	sock string
@@ -116,6 +119,9 @@ func (c *dockerClient) list(ctx context.Context) ([]Container, error) {
 
 	out := make([]Container, len(items))
 	var wg sync.WaitGroup
+	// The engine holds each stats request open for a full sampling interval, so
+	// bound how many are in flight rather than opening one per container.
+	sem := make(chan struct{}, maxStatsInFlight)
 	for i, it := range items {
 		name := strings.TrimPrefix(firstOr(it.Names, it.ID[:12]), "/")
 		out[i] = Container{
@@ -133,6 +139,8 @@ func (c *dockerClient) list(ctx context.Context) ([]Container, error) {
 		wg.Add(1)
 		go func(i int, id string) {
 			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
 			var st dockerStats
 			if err := c.get(ctx, "/containers/"+id+"/stats?stream=false", &st); err != nil {
 				return
