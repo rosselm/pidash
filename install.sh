@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build pidash and install it as a systemd service on this Pi.
+# Build pidash and install it as a systemd service.
 #
 # Re-runnable: rebuilds, replaces the binary, restarts the unit.
 set -euo pipefail

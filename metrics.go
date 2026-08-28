@@ -3,8 +3,8 @@
 // Nothing here depends on the OTel collector: the dashboard has to stay up
 // precisely when the telemetry pipeline is the thing that fell over.
 //
-// Standard library only, matching the constraint the rest of this host's
-// tooling works under.
+// Standard library only: this has to run on a stock Raspberry Pi OS image with
+// nothing installed.
 package main
 
 import (
@@ -712,7 +712,7 @@ func curFreqMHz() int {
 
 // cgroupRSS sums the resident set of every process in a cgroup.
 //
-// It exists because this board boots without the memory controller
+// It exists because Raspberry Pi OS boots without the memory controller
 // (`cgroup_enable=memory` is absent from cmdline.txt), so both Docker's stats
 // endpoint and systemd's MemoryCurrent come back empty. Summing RSS
 // double-counts shared pages, but it is the difference between a real number

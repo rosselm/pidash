@@ -477,7 +477,7 @@ table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 /* Every cell gets real breathing room on both sides. Numeric columns need the
    left padding especially: two adjacent right-aligned columns would otherwise
    have their digits touching. */
-/* Table cells never wrap: a wrapped "64.8 MB" or "fx-rates" doubles the row
+/* Table cells never wrap: a wrapped "64.8 MB" or a container name doubles the row
    height and reads as a layout fault. The one cell allowed to absorb the slack
    is .trunc, which ellipsises instead. */
 th, td { padding: 11px 16px 11px 0; vertical-align: middle; text-align: left; white-space: nowrap; }

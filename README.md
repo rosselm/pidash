@@ -32,14 +32,14 @@ chmod +x pidash-linux-arm64
 `armv6` builds cover 32-bit installs and the Zero. To run it as a service
 instead, clone and use [`install.sh`](install.sh) — see [Install](#install).
 
-## Why it exists separately from the OTel pipeline
+## Why it stands apart from your telemetry pipeline
 
-The collector on this host pushes to the Mac gateway, so *the moment the network
-partitions or the gateway goes down, the Grafana view goes dark* — which is
-exactly when you want to look at the Pi. pidash reads `/proc`, `/sys` and the
-VideoCore firmware directly and serves its own UI, so it stays up when the
-telemetry path does not. It shares no code, no config and no port with
-`otelcol-contrib`.
+If a Pi ships its metrics to a collector elsewhere, the dashboard goes dark at
+precisely the moment you want it: a network partition, a full disk, a wedged
+agent. pidash reads `/proc`, `/sys` and the VideoCore firmware directly and
+serves its own UI from the same binary, so it keeps working when the telemetry
+path does not. It shares no code, no configuration and no port with whatever
+agent is already running.
 
 ## What it shows
 
@@ -127,6 +127,23 @@ Two hardening settings are deliberately *not* tightened further:
 - `RestrictAddressFamilies` includes `AF_NETLINK`. Go enumerates interface
   addresses over netlink; without it every interface renders with a blank IP.
 
+## Local configuration
+
+Site-specific settings belong in a systemd drop-in rather than in the unit that
+ships here, so `install.sh` never overwrites them and they never end up in
+version control:
+
+```ini
+# /etc/systemd/system/pidash.service.d/local.conf
+[Service]
+ExecStart=
+ExecStart=/usr/local/bin/pidash -addr 127.0.0.1:8090 -units ssh,docker,my-agent
+```
+
+```bash
+sudo systemctl daemon-reload && sudo systemctl restart pidash
+```
+
 ## Flags
 
 ```
@@ -135,8 +152,8 @@ Two hardening settings are deliberately *not* tightened further:
 -proc-interval  3s                       how often to walk /proc for the process table
 -top            8                        processes in the top table
 -expose-cmdline false                    publish full process command lines
--units          otelcol-contrib,pi-temp-exporter,docker,ssh
--log-units      otelcol-contrib,pi-temp-exporter   (empty = whole journal)
+-units          ssh,docker               systemd units for the Services panel
+-log-units      (empty)                  units to tail; empty = the whole journal
 -docker-sock    /var/run/docker.sock     empty to disable the panel
 -version        print version and exit
 ```
@@ -177,8 +194,8 @@ metric. That is a deliberate fit for a trusted home LAN, but it has one
 consequence worth stating plainly:
 
 `/proc/<pid>/cmdline` routinely contains credentials — `--token=`, `--password=`,
-`--api-key=` — passed as flags. On the machine this was written for, 2 of 190
-readable command lines matched that pattern. So **only `argv[0]` is published**:
+`--api-key=` — passed as flags. On an ordinary Pi a handful of the running
+processes will match that pattern. So **only `argv[0]` is published**:
 the executable path, never the arguments. `-expose-cmdline` opts back in to full
 command lines and logs a warning at startup.
 
@@ -246,8 +263,43 @@ Serving on 8443 sidesteps it without touching the cluster.
 An SSH tunnel needs nothing installed on the Pi:
 
 ```bash
-ssh -N -L 8090:127.0.0.1:8090 pi@raspberrypi   # then open http://localhost:8090/
+ssh -N -L 8090:127.0.0.1:8090 pi@<host>   # then open http://localhost:8090/
 ```
+
+## Diagnosing under-voltage
+
+The firmware's sticky "since boot" throttle bits tell you under-voltage
+happened, but not when, for how long, or under what conditions — and they
+cannot be cleared without a reboot. [`tools/psu-test.sh`](tools/psu-test.sh)
+pins every core while sampling the live bits each second, so a marginal supply
+becomes a measurement:
+
+```bash
+./tools/psu-test.sh            # 20s idle, 90s loaded, 20s idle
+LOAD=180 ./tools/psu-test.sh   # longer soak
+```
+
+```
+  baseline  ....
+  load      .!!!!!!.!!!!!!
+  cooldown  !!!!
+
+  under-voltage : 16 of 22 seconds (73%)
+  longest spell : 10 seconds
+  while loaded  : 12 of 14 (86%)
+  while idle    : 4 of 8 (50%)
+  temperature   : 42.3 -> 48.2 C
+
+  VERDICT: under-voltage even at idle — suspect the supply or its cable.
+```
+
+Run it once as a baseline, then again after changing exactly one thing — a
+different wall socket, no extension lead, another supply — and compare. It
+exits non-zero when under-voltage is seen, so it also works in a cron check.
+Temperature is reported alongside so a hot board is not mistaken for a weak
+supply; thermal throttling starts far above anything a supply problem produces.
+
+Needs nothing installed: `vcgencmd`, `awk` and a shell.
 
 ## Tests
 
@@ -263,10 +315,10 @@ two MESSAGE encodings, Docker's CPU-percent and page-cache arithmetic,
 regression tests for bugs that actually shipped: filesystems deduplicating by
 device, and `argv` never being published by default.
 
-`-race` aborts on this board with `ThreadSanitizer: unsupported VMA range` (the
-Pi kernel uses a 39-bit address space, TSan wants 48). CI runs it on amd64.
+`-race` aborts on a Raspberry Pi with `ThreadSanitizer: unsupported VMA range`
+(the Pi kernel uses a 39-bit address space, TSan wants 48). CI runs it on amd64.
 
-## Known limitation on this board: cgroup memory accounting is off
+## Known limitation: cgroup memory accounting is off by default
 
 `/sys/fs/cgroup/cgroup.controllers` lists `cpuset cpu io pids` — no `memory`.
 Raspberry Pi OS ships that way. The consequence is that Docker's stats endpoint
@@ -321,8 +373,7 @@ logs.go       shared journal tail with a replay backlog
 web/          index.html, style.css, app.js — embedded via go:embed
 ```
 
-Standard library only, matching the constraint the rest of this host's tooling
-works under. The frontend has no build step and no external assets: no CDN, no
+Standard library only. The frontend has no build step and no external assets: no CDN, no
 web fonts, so it loads fine on a LAN with no internet route.
 
 ## Licence

@@ -4,11 +4,11 @@ import "testing"
 
 func TestParseUnitShow(t *testing.T) {
 	// Two records, blank-line separated, exactly as systemctl emits them.
-	const out = `Id=otelcol-contrib.service
-Description=OpenTelemetry Collector Contrib
+	const out = `Id=metrics-agent.service
+Description=Metrics Agent
 ActiveState=active
 SubState=running
-ControlGroup=/system.slice/otelcol-contrib.service
+ControlGroup=/system.slice/metrics-agent.service
 ActiveEnterTimestampMonotonic=60000000
 NRestarts=2
 MemoryCurrent=[not set]
@@ -25,7 +25,7 @@ MemoryCurrent=8388608
 MainPID=0
 `
 	rss := func(path string) uint64 {
-		if path == "/sys/fs/cgroup/system.slice/otelcol-contrib.service" {
+		if path == "/sys/fs/cgroup/system.slice/metrics-agent.service" {
 			return 99
 		}
 		t.Errorf("unexpected cgroup path %q", path)
@@ -37,7 +37,7 @@ MainPID=0
 	}
 
 	u := units[0]
-	if u.Name != "otelcol-contrib" {
+	if u.Name != "metrics-agent" {
 		t.Errorf("Name = %q, want the .service suffix stripped", u.Name)
 	}
 	if u.Active != "active" || u.Sub != "running" || u.Restarts != 2 || u.PID != 1234 {

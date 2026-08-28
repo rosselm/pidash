@@ -167,7 +167,7 @@ func TestDecodeThrottle(t *testing.T) {
 	}{
 		{"all clear", 0x0, false, false, nil},
 		{
-			// What this board actually reports: nothing active, but
+			// The common real-world case: nothing active now, but
 			// under-voltage and throttling have both happened since boot.
 			name: "0x50000 past only", word: 0x50000, wantNow: false, wantEver: true,
 			check: func(t *testing.T, f []Flag) {
